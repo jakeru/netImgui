@@ -40,31 +40,34 @@ inline void SetNonBlocking(int Socket, bool bIsNonBlocking)
 
 SocketInfo* Connect(const char* ServerHost, uint32_t ServerPort)
 {
-	int ConnectSocket = socket(AF_INET , SOCK_STREAM , 0 );
-	if(ConnectSocket == -1)
-		return nullptr;
-	
+	const addrinfo hints = {
+		.ai_family = AF_UNSPEC,
+		.ai_socktype = SOCK_STREAM,
+	};
 	char zPortName[32];
 	addrinfo*	pResults	= nullptr;
 	SocketInfo* pSocketInfo	= nullptr;
 	sprintf(zPortName, "%i", ServerPort);
-	getaddrinfo(ServerHost, zPortName, nullptr, &pResults);
-	addrinfo*	pResultCur	= pResults;
-	while( pResultCur && !pSocketInfo)
-	{
-		if( connect(ConnectSocket, pResultCur->ai_addr, static_cast<int>(pResultCur->ai_addrlen)) == 0 )
+	const int res = getaddrinfo(ServerHost, zPortName, &hints, &pResults);
+	if (res != 0) {
+		return nullptr;
+	}
+	for (addrinfo* pResultCur = pResults; pResultCur != nullptr; pResultCur = pResultCur->ai_next) {
+		int ConnectSocket = socket(pResultCur->ai_family, pResultCur->ai_socktype, 0);
+		if(ConnectSocket == -1) {
+			break;
+		}
+		if( connect(ConnectSocket, pResultCur->ai_addr, pResultCur->ai_addrlen) == 0 )
 		{
 			SetNonBlocking(ConnectSocket, false);
 			pSocketInfo = netImguiNew<SocketInfo>(ConnectSocket);
-		}		
-		pResultCur = pResultCur->ai_next;
+			break;
+		}
+		close(ConnectSocket);
 	}
 
 	freeaddrinfo(pResults);
-	if( !pSocketInfo )
-	{
-		close(ConnectSocket);
-	}
+
 	return pSocketInfo;
 }
 
