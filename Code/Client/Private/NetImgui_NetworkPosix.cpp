@@ -45,8 +45,52 @@ static void SetNonBlocking(int Socket, bool bConfigureAsNonBlocking)
 	fcntl(Socket, F_SETFL, Flags);
 }
 
+static bool WaitForConnectResult(int Socket, int Timeout_ms)
+{
+	struct pollfd pfds = { .fd = Socket, .events = POLLOUT };
+
+	int poll_res;
+	while ((poll_res = poll(&pfds, 1, Timeout_ms) == EINTR)) {
+		// Interrupted. Try again.
+	}
+
+	if (poll_res <= 0) {
+		// If poll_res == 0: Timeout
+		// If poll_res < 0: Other error, lookup `errno` in errno.h 
+		return false;
+	}
+
+	int error = -1;
+	socklen_t len = sizeof(error);
+	const int res = getsockopt(Socket, SOL_SOCKET, SO_ERROR, &error, &len);
+	if (res != 0 || error != 0) {
+		// Error.
+		// If res != 0: lookup `errno` in errno.h.
+		// Elif error != 0: lookup `error` in errno.h.
+		return false;
+	}
+
+	return true;
+}
+
+static bool ConnectWithTimeout(int Socket, const addrinfo* pAddr, int Timeout_ms)
+{
+	SetNonBlocking(Socket, true);
+
+	int res = connect(Socket, pAddr->ai_addr, pAddr->ai_addrlen);
+	if (res == 0) {
+		return true;
+	}
+	else if (errno != EINPROGRESS) {
+		return false;
+	}
+
+	return WaitForConnectResult(Socket, Timeout_ms);
+}
+
 SocketInfo* Connect(const char* ServerHost, uint32_t ServerPort)
 {
+	const int Timeout_ms = 5000;
 	const addrinfo hints = {
 		.ai_family = AF_UNSPEC,
 		.ai_socktype = SOCK_STREAM,
@@ -64,7 +108,7 @@ SocketInfo* Connect(const char* ServerHost, uint32_t ServerPort)
 		if(ConnectSocket == -1) {
 			break;
 		}
-		if( connect(ConnectSocket, pResultCur->ai_addr, pResultCur->ai_addrlen) == 0 )
+		if( ConnectWithTimeout(ConnectSocket, pResultCur, Timeout_ms) )
 		{
 			SetNonBlocking(ConnectSocket, false);
 			pSocketInfo = netImguiNew<SocketInfo>(ConnectSocket);
