@@ -12,6 +12,8 @@
 #include <fcntl.h>
 #include <sstream>
 #include <stdio.h>
+#include <errno.h>
+#include <poll.h>
 
 namespace NetImgui { namespace Internal { namespace Network 
 {
@@ -31,10 +33,15 @@ void Shutdown()
 {
 }
 
-inline void SetNonBlocking(int Socket, bool bIsNonBlocking)
+static void SetNonBlocking(int Socket, bool bConfigureAsNonBlocking)
 {
 	int Flags	= fcntl(Socket, F_GETFL, 0);
-	Flags		= bIsNonBlocking ? Flags | O_NONBLOCK : Flags ^ (Flags & O_NONBLOCK);
+	if (bConfigureAsNonBlocking) {
+		Flags |= O_NONBLOCK;
+	}
+	else {
+		Flags &= ~O_NONBLOCK;
+	}
 	fcntl(Socket, F_SETFL, Flags);
 }
 
